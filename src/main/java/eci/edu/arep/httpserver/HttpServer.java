@@ -129,13 +129,15 @@ public class HttpServer {
             
             String[] argsValues = null;
             RequestParam rp = (RequestParam) m.getParameterAnnotations()[0][0];
+            System.out.println("Param: " + rp);
 
+            /*
             if(requri.getQuery() == null){
                 argsValues = new String[]{};
             }else{    
                 String queryParamName = rp.value();
-                argsValues = new String[] { req.getValue(req.getValue(queryParamName)) };
-            }
+                argsValues = new String[] { req.getValue(queryParamName) };
+            } */
 
             String header = "HTTP/1.1 200 OK\n\r"
                     + "content-type: text/html\n\r"
