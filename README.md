@@ -139,7 +139,7 @@ src/
 
 ## License
 
-Este proyecto está bajo la licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
+Este proyecto está bajo la licencia MIT - ver el archivo [LICENSE](/LICENSE.md) para más detalles.
 
 ---
 
