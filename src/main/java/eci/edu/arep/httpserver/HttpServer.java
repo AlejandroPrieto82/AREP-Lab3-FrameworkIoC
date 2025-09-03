@@ -1,123 +1,78 @@
-package main.java.eci.edu.arep.httpServer;
+package eci.edu.arep.httpserver;
 
-import java.net.*;
+import eci.edu.arep.microspringboot.annotations.GetMapping;
+import eci.edu.arep.microspringboot.annotations.RequestParam;
+import eci.edu.arep.microspringboot.annotations.RestController;
+
 import java.io.*;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Parameter;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
-import main.java.eci.edu.arep.GetMapping;
-import main.java.eci.edu.arep.RequestParam;
-import main.java.eci.edu.arep.RestController;
+import java.lang.reflect.*;
+import java.net.*;
+import java.util.*;
 
 public class HttpServer {
 
-    public static Map<String, Method> services = new HashMap();
+    private static class ServiceDefinition {
+        Object instance;
+        Method method;
+
+        ServiceDefinition(Object instance, Method method) {
+            this.instance = instance;
+            this.method = method;
+        }
+    }
+
+    private static final Map<String, ServiceDefinition> services = new HashMap<>();
 
     public static void loadServices(String[] args) {
         try {
-            Class c = Class.forName(args[0]);
-            System.out.println("Inicio carga de componentes");
-            System.out.println(args[0]);
+            Class<?> c = Class.forName(args[0]);
             if (c.isAnnotationPresent(RestController.class)) {
-                Method[] methods = c.getDeclaredMethods();
-
-                for (Method m : methods) {
+                Object controller = c.getDeclaredConstructor().newInstance();
+                for (Method m : c.getDeclaredMethods()) {
                     if (m.isAnnotationPresent(GetMapping.class)) {
                         String mapping = m.getAnnotation(GetMapping.class).value();
-
-                        System.out.println("Cargando metodo: " + m.getName());
-                        services.put(mapping, m);
+                        services.put(mapping, new ServiceDefinition(controller, m));
+                        System.out.println("Cargado servicio: " + mapping);
                     }
                 }
             }
-        } catch (ClassNotFoundException ex) {
-            Logger.getLogger(HttpServer.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
     public static void runServer(String[] args) throws IOException, URISyntaxException {
         loadServices(args);
 
-        ServerSocket serverSocket = null;
-        try {
-            serverSocket = new ServerSocket(35000);
-        } catch (IOException e) {
-            System.err.println("Could not listen on port: 35000.");
-            System.exit(1);
-        }
-        Socket clientSocket = null;
+        ServerSocket serverSocket = new ServerSocket(35000);
+        while (true) {
+            try (Socket clientSocket = serverSocket.accept();
+                 PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+                 BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()))) {
 
-        boolean running = true;
-        while (running) {
-            try {
-                System.out.println("Listo para recibir ...");
-                clientSocket = serverSocket.accept();
-            } catch (IOException e) {
-                System.err.println("Accept failed.");
-                System.exit(1);
-            }
+                String inputLine;
+                boolean firstLine = true;
+                URI requri = null;
 
-            PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-            BufferedReader in = new BufferedReader(
-                    new InputStreamReader(
-                            clientSocket.getInputStream()));
-            String inputLine, outputLine;
-
-            String path = null;
-            boolean firstline = true;
-            URI requri = null;
-
-            while ((inputLine = in.readLine()) != null) {
-                if (firstline) {
-                    requri = new URI(inputLine.split(" ")[1]);
-                    System.out.println("Path: " + requri.getPath());
-                    firstline = false;
+                while ((inputLine = in.readLine()) != null) {
+                    if (firstLine) {
+                        requri = new URI(inputLine.split(" ")[1]);
+                        firstLine = false;
+                    }
+                    if (!in.ready()) break;
                 }
-                System.out.println("Received: " + inputLine);
-                if (!in.ready()) {
-                    break;
+
+                String outputLine;
+                if (requri != null && requri.getPath().startsWith("/app")) {
+                    outputLine = invokeService(requri);
+                } else {
+                    outputLine = defaultResponse();
                 }
+
+                out.println(outputLine);
             }
-
-            if (requri.getPath().startsWith("/app")) {
-                outputLine = invokeService(requri);
-            } else {
-                // Leo del disco
-
-                outputLine = defaultResponse();
-            }
-            out.println(outputLine);
-
-            out.close();
-            in.close();
-            clientSocket.close();
         }
-        serverSocket.close();
     }
-
-    private static String helloService(URI requesturi) {
-        // Encabezado con content-type adaptado para retornar un JSON
-        String response = "HTTP/1.1 200 OK\n\r"
-                + "content-type: application/json\n\r"
-                + "\n\r";
-        // Extrae el valor de "name" desde el query.
-        String name = requesturi.getQuery().split("=")[1]; // name=jhon
-
-        // Crea la respuesta completa
-        response = response + "{\"mensaje\": \"Hola " + name + "\"}";
-        return response;
-    }
-
-    /*
-     * public static void get(String path, Service s) {
-     * services.put(path, s);
-     * }
-     */
 
     private static String invokeService(URI requri) {
         try {
@@ -125,95 +80,36 @@ public class HttpServer {
             HttpResponse res = new HttpResponse();
 
             String servicePath = requri.getPath().substring(4);
-            Method m = services.get(servicePath);
-            
-            String[] argsValues = null;
-            RequestParam rp = (RequestParam) m.getParameterAnnotations()[0][0];
-            System.out.println("Param: " + rp);
+            ServiceDefinition def = services.get(servicePath);
+            if (def == null) {
+                res.setStatus("404 Not Found");
+                res.setBody("<h1>404 - Not Found</h1>");
+                return res.buildResponse();
+            }
 
-            /*
-            if(requri.getQuery() == null){
-                argsValues = new String[]{};
-            }else{    
-                String queryParamName = rp.value();
-                argsValues = new String[] { req.getValue(queryParamName) };
-            } */
+            Method m = def.method;
+            Object[] args = new Object[m.getParameterCount()];
 
-            String header = "HTTP/1.1 200 OK\n\r"
-                    + "content-type: text/html\n\r"
-                    + "\n\r";
+            Parameter[] params = m.getParameters();
+            for (int i = 0; i < params.length; i++) {
+                RequestParam rp = params[i].getAnnotation(RequestParam.class);
+                if (rp != null) {
+                    args[i] = req.getValue(rp.value(), rp.defaultValue());
+                }
+            }
 
-            return header + m.invoke(null, argsValues);
-        } catch (IllegalAccessException | InvocationTargetException | NullPointerException ex) {
-            Logger.getLogger(HttpServer.class.getName()).log(Level.SEVERE, null, ex);
+            Object result = m.invoke(def.instance, args);
+            res.setBody(result.toString());
+            return res.buildResponse();
 
-            return "HTTP/1.1 500 Internal Server Error\r\n"
-                    + "content-type: text/html\r\n"
-                    + "\r\n"
-                    + "<h1>500 - Internal Server Error HELLO</h1>";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\n\r\n<h1>500 - Error interno</h1>";
         }
     }
 
-    public static void staticfiles(String localFilesPath) {
-    }
-
-    public static void start(String[] args) throws IOException, URISyntaxException {
-        runServer(args);
-    }
-
     public static String defaultResponse() {
-        return "HTTP/1.1 200 OK\r\n"
-                + "content-type: text/html\r\n"
-                + "\r\n"
-                + "<!DOCTYPE html>\n"
-                + "<html>\n"
-                + "<head>\n"
-                + "<title>Form Example</title>\n"
-                + "<meta charset=\"UTF-8\">\n"
-                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
-                + "</head>\n"
-                + "<body>\n"
-                + "<h1>Form with GET</h1>\n"
-                + "<form action=\"/hello\">\n"
-                + "<label for=\"name\">Name:</label><br>\n"
-                + "<input type=\"text\" id=\"name\" name=\"name\" value=\"John\"><br><br>\n"
-                + "<input type=\"button\" value=\"Submit\" onclick=\"loadGetMsg()\">\n"
-                + "</form>\n"
-                + "<div id=\"getrespmsg\"></div>\n"
-                + " \n"
-                + "<script>\n"
-                + "function loadGetMsg() {\n"
-                + "let nameVar = document.getElementById(\"name\").value;\n"
-                + "const xhttp = new XMLHttpRequest();\n"
-                + "xhttp.onload = function() {\n"
-                + "document.getElementById(\"getrespmsg\").innerHTML =\n"
-                + "this.responseText;\n"
-                + "}\n"
-                + "xhttp.open(\"GET\", \"/app/hello?name=\"+nameVar);\n"
-                + "xhttp.send();\n"
-                + "}\n"
-                + "</script>\n"
-                + " \n"
-                + "<h1>Form with POST</h1>\n"
-                + "<form action=\"/hellopost\">\n"
-                + "<label for=\"postname\">Name:</label><br>\n"
-                + "<input type=\"text\" id=\"postname\" name=\"name\" value=\"John\"><br><br>\n"
-                + "<input type=\"button\" value=\"Submit\" onclick=\"loadPostMsg(postname)\">\n"
-                + "</form>\n"
-                + " \n"
-                + "<div id=\"postrespmsg\"></div>\n"
-                + " \n"
-                + "<script>\n"
-                + "function loadPostMsg(name){\n"
-                + "let url = \"/hellopost?name=\" + name.value;\n"
-                + " \n"
-                + "fetch (url, {method: 'POST'})\n"
-                + ".then(x => x.text())\n"
-                + ".then(y => document.getElementById(\"postrespmsg\").innerHTML = y);\n"
-                + "}\n"
-                + "</script>\n"
-                + "</body>\n"
-                + "</html>";
+        return "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" +
+                "<h1>Servidor funcionando!</h1><p>Intenta ir a <a href=\"/app/greeting\">/app/greeting</a></p>";
     }
-
 }

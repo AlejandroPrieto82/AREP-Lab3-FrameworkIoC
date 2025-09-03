@@ -1,18 +1,14 @@
-package main.java.eci.edu.arep.microspringboot.examples;
+package eci.edu.arep.microspringboot.examples;
 
-import main.java.eci.edu.arep.microspringboot.annotations.GetMapping;
-import main.java.eci.edu.arep.microspringboot.annotations.RequestParam;
-import main.java.eci.edu.arep.microspringboot.annotations.RestController;
-import java.util.concurrent.atomic.AtomicLong;
+import eci.edu.arep.microspringboot.annotations.GetMapping;
+import eci.edu.arep.microspringboot.annotations.RequestParam;
+import eci.edu.arep.microspringboot.annotations.RestController;
 
 @RestController
 public class GreetingController {
 
-	private static final String template = "Hello, %s!";
-	private final AtomicLong counter = new AtomicLong();
-
-	@GetMapping("/greeting")
-	public static String greeting() {
-		return "Hola " ;//+ name;
-	}
+    @GetMapping("/greeting")
+    public String greeting(@RequestParam(value="name", defaultValue="World") String name) {
+        return "Hola " + name;
+    }
 }

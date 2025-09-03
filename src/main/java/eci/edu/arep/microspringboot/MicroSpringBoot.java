@@ -2,7 +2,7 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
  */
 
-package main.java.eci.edu.arep.microspringboot;
+package eci.edu.arep.microspringboot;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -10,7 +10,7 @@ import java.net.URISyntaxException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import main.java.eci.edu.arep.httpServer.HttpServer;
+import eci.edu.arep.httpserver.HttpServer;
 
 /**
  *

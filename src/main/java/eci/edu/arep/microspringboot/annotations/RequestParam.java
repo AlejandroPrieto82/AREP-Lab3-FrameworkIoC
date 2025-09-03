@@ -1,4 +1,4 @@
-package main.java.eci.edu.arep.microspringboot.annotations;
+package eci.edu.arep.microspringboot.annotations;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
